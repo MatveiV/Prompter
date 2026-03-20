@@ -219,24 +219,30 @@ async def cmd_report(message: Message):
         await message.answer("Пока нет данных. Отправь хотя бы один запрос.")
         return
 
-    lines = ["<b>📊 Отчёт о работе моделей</b>\n"]
-    lines.append(
-        "<code>"
-        f"{'Провайдер':<10} {'Модель':<22} {'Temp':>5} {'MaxTok':>7} "
-        f"{'#':>3} {'In':>6} {'Out':>6} {'Total':>7} {'Finish':<12}"
-        "</code>"
+    header = (
+        "📊 Отчёт о работе моделей\n\n"
+        "Модель | Temp | MaxTok | # | Эффект | Токены (in/out) | Стоимость\n"
+        "─" * 55
     )
+    rows = [header]
     for r in run_log:
-        lines.append(
-            "<code>"
-            f"{r['provider']:<10} {r['model_label']:<22} {r['temperature']:>5.2f} "
-            f"{r['max_tokens']:>7} {r['run_no']:>3} "
-            f"{r.get('prompt_tokens', '?'):>6} {r.get('completion_tokens', '?'):>6} "
-            f"{r.get('total_tokens', '?'):>7} {r.get('finish_reason', '?'):<12}"
-            "</code>"
+        total = r.get("total_tokens", "?")
+        p_tok = r.get("prompt_tokens", "?")
+        c_tok = r.get("completion_tokens", "?")
+        cost  = r.get("cost_rub", 0.0)
+        cost_str = f"~{cost:.4f}₽" if cost > 0 else "бесплатно"
+        finish = r.get("finish_reason", "?")
+
+        rows.append(
+            f"{r['model_label']}\n"
+            f"  Temp: {r['temperature']}  MaxTok: {r['max_tokens']}  #{r['run_no']}\n"
+            f"  Эффект: {r['effect']}  Finish: {finish}\n"
+            f"  Токены: {total} (in {p_tok} / out {c_tok})\n"
+            f"  Стоимость: {cost_str}\n"
+            f"  Провайдер: {r['provider']}"
         )
 
-    await message.answer("\n".join(lines), parse_mode="HTML")
+    await message.answer("\n\n".join(rows))
 
 
 # ── /help ──────────────────────────────────────────────────────────────────────
@@ -290,35 +296,61 @@ async def handle_message(message: Message, state: FSMContext):
         )
     except Exception as e:
         logger.exception("Chat error for user %d", uid)
-        await message.answer(f"❌ Ошибка: {e}")
-        # remove the user message we just added since request failed
+        err_str = str(e)
+        if "402" in err_str or "Insufficient balance" in err_str or "Недостаточно средств" in err_str:
+            await message.answer(
+                "❌ Недостаточно средств на балансе провайдера.\n"
+                "Пополни баланс или выбери другого провайдера — /setup"
+            )
+        else:
+            await message.answer(f"❌ Ошибка: {e}")
         ctx["messages"].pop()
         return
 
     cm.add_message(uid, "assistant", reply)
 
+    # ── compute cost ──────────────────────────────────────────────────────────
+    price_in  = model.get("price_in", 0.0)   # ₽ per 1K tokens
+    price_out = model.get("price_out", 0.0)
+    p_tok = usage.get("prompt_tokens", 0)
+    c_tok = usage.get("completion_tokens", 0)
+    cost = (p_tok / 1000 * price_in) + (c_tok / 1000 * price_out)
+
+    # ── effect heuristic ──────────────────────────────────────────────────────
+    # temperature < 0.4 → concise/factual, > 0.8 → creative
+    temp = ctx["temperature"]
+    if temp < 0.4:
+        effect = "сжато/факт"
+    elif temp > 0.8:
+        effect = "креатив"
+    else:
+        effect = "баланс"
+
     # log run
     run_no = _next_run(uid, model["id"])
     run_log.append({
-        "provider": PROVIDERS[provider_key]["name"],
-        "model_label": model["label"],
-        "model_id": model["id"],
-        "temperature": ctx["temperature"],
-        "max_tokens": ctx["max_tokens"],
-        "run_no": run_no,
+        "provider":          PROVIDERS[provider_key]["name"],
+        "model_label":       model["label"],
+        "model_id":          model["id"],
+        "temperature":       temp,
+        "max_tokens":        ctx["max_tokens"],
+        "run_no":            run_no,
+        "effect":            effect,
+        "cost_rub":          cost,
         **usage,
     })
 
-    # footer with token info
+    # footer
     token_info = ""
     if usage:
+        cost_str = f"~{cost:.4f}₽" if cost > 0 else "бесплатно"
         token_info = (
-            f"\n\n<i>🔢 {usage.get('total_tokens', '?')} токенов "
+            f"\n\n🔢 {usage.get('total_tokens', '?')} токенов "
             f"(in {usage.get('prompt_tokens', '?')} / out {usage.get('completion_tokens', '?')}) "
-            f"· {model['id']} · {ctx['temperature']}°</i>"
+            f"· {model['id']} · t={temp} · {cost_str}"
         )
 
-    await message.answer(reply + token_info, parse_mode="HTML")
+    await message.answer(reply + token_info)
 
 
 # ── entry point ────────────────────────────────────────────────────────────────
