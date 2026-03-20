@@ -10,7 +10,7 @@ BASE_URL = "https://proxy.gen-api.ru/v1/chat/completions"
 # GenAPI supports 180+ models; listing popular LLMs available via OpenAI-format
 MODELS = {
     "1": {
-        "id": "gpt-4.1-mini",
+        "id": "gpt-4-1-mini",
         "name": "GPT-4.1 Mini",
         "context": "1M",
         "supports_system": True,
@@ -19,7 +19,7 @@ MODELS = {
         "description": "Fast & affordable GPT-4.1 tier",
     },
     "2": {
-        "id": "gpt-4.1",
+        "id": "gpt-4-1",
         "name": "GPT-4.1",
         "context": "1M",
         "supports_system": True,
@@ -55,7 +55,7 @@ MODELS = {
         "description": "Anthropic Claude Opus, most capable",
     },
     "6": {
-        "id": "gemini-2.5-flash",
+        "id": "gemini-2-5-flash",
         "name": "Gemini 2.5 Flash",
         "context": "1M",
         "supports_system": True,
@@ -73,8 +73,8 @@ MODELS = {
         "description": "DeepSeek V3, strong coding & reasoning",
     },
     "8": {
-        "id": "deepseek-reasoner",
-        "name": "DeepSeek Reasoner (R1)",
+        "id": "deepseek-r1",
+        "name": "DeepSeek R1",
         "context": "64K",
         "supports_system": False,
         "temp_range": (0.0, 2.0),
