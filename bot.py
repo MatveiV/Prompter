@@ -219,30 +219,33 @@ async def cmd_report(message: Message):
         await message.answer("Пока нет данных. Отправь хотя бы один запрос.")
         return
 
-    header = (
-        "📊 Отчёт о работе моделей\n\n"
-        "Модель | Temp | MaxTok | # | Эффект | Токены (in/out) | Стоимость\n"
-        "─" * 55
-    )
-    rows = [header]
+    rows = ["📊 Отчёт о работе моделей\n"]
     for r in run_log:
         total = r.get("total_tokens", "?")
         p_tok = r.get("prompt_tokens", "?")
         c_tok = r.get("completion_tokens", "?")
         cost  = r.get("cost_rub", 0.0)
         cost_str = f"~{cost:.4f}₽" if cost > 0 else "бесплатно"
-        finish = r.get("finish_reason", "?")
-
         rows.append(
-            f"{r['model_label']}\n"
-            f"  Temp: {r['temperature']}  MaxTok: {r['max_tokens']}  #{r['run_no']}\n"
-            f"  Эффект: {r['effect']}  Finish: {finish}\n"
-            f"  Токены: {total} (in {p_tok} / out {c_tok})\n"
-            f"  Стоимость: {cost_str}\n"
-            f"  Провайдер: {r['provider']}"
+            f"#{r['run_no']} {r['model_label']} [{r['provider']}]\n"
+            f"  t={r['temperature']} max={r['max_tokens']} | {r['effect']} | {r.get('finish_reason','?')}\n"
+            f"  токены: {total} (in {p_tok} / out {c_tok}) | {cost_str}"
         )
 
-    await message.answer("\n\n".join(rows))
+    # split into chunks ≤ 4000 chars
+    LIMIT = 4000
+    chunks, buf = [], ""
+    for row in rows:
+        if len(buf) + len(row) + 2 > LIMIT:
+            chunks.append(buf)
+            buf = row
+        else:
+            buf = (buf + "\n\n" + row).lstrip("\n")
+    if buf:
+        chunks.append(buf)
+
+    for chunk in chunks:
+        await message.answer(chunk)
 
 
 # ── /help ──────────────────────────────────────────────────────────────────────
