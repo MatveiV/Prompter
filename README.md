@@ -1,21 +1,26 @@
-# three_ai_comparison_bot
+# PromptingAIbot
 
-Три CLI-скрипта и Telegram-бот для сравнения AI-провайдеров: **Z.AI**, **ProxyAPI**, **GenAPI**.
+Набор CLI-скриптов и Telegram-бот для работы с несколькими AI-провайдерами: **Z.AI**, **ProxyAPI**, **GenAPI**.
 
 ## Структура проекта
 
 ```
 .
-├── bot.py              # Telegram-бот (aiogram 3)
-├── config.py           # Провайдеры, модели, цены, токены
-├── context_manager.py  # In-memory контекст диалога на пользователя
-├── openai_client.py    # Единый OpenAI-совместимый HTTP-клиент
-├── zai_direct.py       # CLI — Z.AI (GLM-модели)
-├── proxy_api.py        # CLI — ProxyAPI → OpenAI GPT
-├── gen_api.py          # CLI — GenAPI (GPT / Claude / Gemini / DeepSeek)
-├── .env                # Секреты (не коммитить — в .gitignore)
-├── .env.example        # Шаблон .env
-├── requirements.txt    # Зависимости
+├── bot.py                      # Telegram-бот (aiogram 3)
+├── config.py                   # Провайдеры, модели, цены, токены
+├── context_manager.py          # In-memory контекст диалога на пользователя
+├── openai_client.py            # Единый OpenAI-совместимый HTTP-клиент
+├── ai_direct.py                # Интерактивный CLI с историей и сохранением сессии
+├── prompt_engineering_demo.py  # Демо prompt engineering: базовый vs few-shot промпт
+├── zai_direct.py               # CLI — Z.AI (GLM-модели)
+├── proxy_api.py                # CLI — ProxyAPI → OpenAI GPT
+├── gen_api.py                  # CLI — GenAPI (GPT / Claude / Gemini / DeepSeek)
+├── prompts.json                # Системные промпты для ai_direct.py
+├── session.json                # Сохранённая сессия ai_direct.py (создаётся автоматически)
+├── artifact_README.md          # Артефакт prompt_engineering_demo.py (создаётся автоматически)
+├── .env                        # Секреты (не коммитить)
+├── .env.example                # Шаблон .env
+├── requirements.txt            # Зависимости
 └── .gitignore
 ```
 
@@ -37,9 +42,9 @@ cp .env.example .env
 ```env
 BOT_TOKEN=your_telegram_bot_token
 
-ZAI_API_KEY=...        # https://api.z.ai/api/paas/v4/
-PROXY_API_KEY=...      # https://api.proxyapi.ru/openai/v1
-GEN_API_KEY=...        # https://proxy.gen-api.ru/v1
+ZAI_API_KEY=...        # https://z.ai
+PROXY_API_KEY=...      # https://proxyapi.ru
+GEN_API_KEY=...        # https://gen-api.ru
 ```
 
 Получить ключи:
@@ -48,7 +53,58 @@ GEN_API_KEY=...        # https://proxy.gen-api.ru/v1
 - GenAPI — [gen-api.ru](https://gen-api.ru)
 - Telegram Bot Token — [@BotFather](https://t.me/BotFather)
 
+---
+
 ## CLI-скрипты
+
+### ai_direct.py — интерактивный CLI с историей
+
+Основной скрипт для диалога с моделью. Поддерживает выбор провайдера, модели, температуры и системных промптов из `prompts.json`. Сохраняет сессию между запусками.
+
+```bash
+python ai_direct.py
+```
+
+Шаги при запуске:
+1. Если найден `session.json` — предложит продолжить предыдущую сессию
+2. Выбор провайдера (Z.AI / ProxyAPI / GenAPI)
+3. Выбор модели из списка
+4. Настройка температуры
+5. Выбор системных промптов из `prompts.json` (можно несколько через запятую, или `0` — без промпта)
+
+Команды в диалоге:
+
+| Команда | Действие |
+|---------|----------|
+| `/model` | Сменить провайдера, модель и температуру |
+| `/new` | Очистить историю (промпты сохраняются) |
+| `/exit` | Выйти и сохранить сессию в `session.json` |
+
+---
+
+### prompt_engineering_demo.py — демо prompt engineering
+
+Демонстрирует разницу между базовым и улучшенным (few-shot) промптами на бытовых задачах. Запускает оба промпта, сравнивает JSON-ответы и генерирует `artifact_README.md`.
+
+```bash
+python prompt_engineering_demo.py
+```
+
+Шаги при запуске:
+1. Выбор бытовой задачи из списка (вода, скидка, бот, зарядка, покупки)
+2. Выбор провайдера и модели
+3. Запуск базового промпта (роль → контекст → задача → формат)
+4. Запуск улучшенного промпта (+ few-shot пример)
+5. Сравнение ответов по 3 критериям: JSON-формат, полезность steps, лаконичность notes
+6. Генерация `artifact_README.md` на основе лучшего ответа
+
+Параметры фиксированы: `temperature=0.2`.
+
+---
+
+### zai_direct.py / proxy_api.py / gen_api.py — одиночные запросы
+
+Простые скрипты для одного запроса к конкретному провайдеру.
 
 ```bash
 python zai_direct.py   # Z.AI (GLM-модели, есть бесплатные)
@@ -57,12 +113,12 @@ python gen_api.py      # GenAPI → GPT / Claude / Gemini / DeepSeek
 ```
 
 Каждый скрипт интерактивно предлагает:
-1. Выбрать модель из списка (с контекстом, ценой, описанием)
+1. Выбрать модель из списка
 2. Ввести system message (опционально)
 3. Ввести запрос
-4. Задать temperature и max_tokens в допустимых диапазонах
+4. Задать temperature и max_tokens
 
-Результат выводится в консоль вместе с токенами и finish_reason.
+---
 
 ## Telegram-бот
 
@@ -86,14 +142,10 @@ python bot.py
 ### Логика бота
 
 - Каждый пользователь имеет свой контекст (последние 20 сообщений, in-memory).
-- После каждого ответа контекст обновляется автоматически.
 - `/setup` сбрасывает контекст и позволяет сменить провайдера/модель/параметры.
-- Ответ модели отправляется как plain text (без HTML-парсинга) — это исключает ошибки при наличии тегов в ответе.
 - Ошибка 402 (недостаточно средств) показывается понятным сообщением.
 
 ### /report — отчёт о прогонах
-
-Каждая строка содержит:
 
 ```
 #<run> <Модель> [<Провайдер>]
@@ -101,16 +153,13 @@ python bot.py
   токены: <total> (in <prompt> / out <completion>) | <стоимость ₽>
 ```
 
-Эффект определяется по температуре:
-- `t < 0.4` → `сжато/факт`
-- `0.4 ≤ t ≤ 0.8` → `баланс`
-- `t > 0.8` → `креатив`
+Эффект по температуре: `t < 0.4` → `сжато/факт` | `0.4–0.8` → `баланс` | `t > 0.8` → `креатив`
 
-Стоимость рассчитывается по актуальным тарифам провайдеров (₽ за 1К токенов).
+---
 
 ## Провайдеры и модели
 
-### Z.AI — `zai_direct.py` / бот
+### Z.AI
 
 Base URL: `https://api.z.ai/api/paas/v4/`
 
@@ -122,7 +171,7 @@ Base URL: `https://api.z.ai/api/paas/v4/`
 | GLM-4.5 | 128K | — | 0.15 ₽/1К | 0.55 ₽/1К |
 | GLM-5 | 200K | — | 0.25 ₽/1К | 0.80 ₽/1К |
 
-### ProxyAPI — `proxy_api.py` / бот
+### ProxyAPI
 
 Base URL: `https://api.proxyapi.ru/openai/v1`
 
@@ -135,11 +184,11 @@ Base URL: `https://api.proxyapi.ru/openai/v1`
 | GPT-4o | 128K | 0.645 ₽/1К | 2.577 ₽/1К |
 | GPT-3.5 Turbo | 16K | 0.129 ₽/1К | 0.387 ₽/1К |
 
-### GenAPI — `gen_api.py` / бот
+### GenAPI
 
 Base URL: `https://proxy.gen-api.ru/v1`
 
-> Важно: GenAPI использует дефисы вместо точек в ID моделей (`gpt-4-1`, `gemini-2-5-flash`).
+> GenAPI использует дефисы вместо точек в ID моделей (`gpt-4-1`, `gemini-2-5-flash`).
 
 | Модель | ID в API | Контекст | Цена вход | Цена выход |
 |--------|----------|----------|-----------|------------|
@@ -151,14 +200,16 @@ Base URL: `https://proxy.gen-api.ru/v1`
 | DeepSeek Chat | `deepseek-chat` | 64K | 0.07 ₽/1К | 0.105 ₽/1К |
 | DeepSeek R1 | `deepseek-r1` | 64K | 0.30 ₽/1К | 1.50 ₽/1К |
 
+---
+
 ## Архитектура
 
 ```
-bot.py
+ai_direct.py / prompt_engineering_demo.py / bot.py
   ├── config.py          — PROVIDERS dict (ключи, URL, модели, цены)
-  ├── context_manager.py — _store: dict[user_id → session]
+  ├── context_manager.py — _store: dict[user_id → session]  (только bot.py)
   └── openai_client.py   — openai.OpenAI(base_url=...) → chat()
 ```
 
-Все три провайдера используют OpenAI-совместимый API, поэтому один клиент работает для всех.
+Все три провайдера используют OpenAI-совместимый API — один клиент работает для всех.
 `proxy_api.py` и `gen_api.py` используют `requests` напрямую (без SDK).

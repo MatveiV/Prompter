@@ -4,3 +4,5 @@ __pycache__/
 *.pyo
 .venv/
 venv/
+session.json
+artifact_README.md
