@@ -311,37 +311,127 @@ def select_winner(
 
 # ─── Генерация артефакта ──────────────────────────────────────────────────────
 
-def write_artifact(
-    task: dict, model_label: str,
-    winner: dict | None, winner_raw: str, winner_status: str, source: str,
-) -> str:
-    path = "artifact_README.md"
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+def _comparison_md(cmp: dict) -> str:
+    """Форматирует таблицу сравнения в Markdown."""
+    b, e, w = cmp["base"], cmp["enhanced"], cmp["winner"]
+    rows = [
+        ("Критерий", "Базовый", "Улучшенный (few-shot)", "Лучше"),
+        ("JSON-формат",      "да" if b["json_valid"] else "нет",
+                             "да" if e["json_valid"] else "нет",  w["json_valid"]),
+        ("Шагов (steps)",    str(b["steps_count"]),  str(e["steps_count"]),  w["steps_count"]),
+        ("Ср. длина notes",  f"{b['avg_notes_len']:.1f}", f"{e['avg_notes_len']:.1f}", w["avg_notes_len"]),
+    ]
+    header, sep_row, *data = rows[0], rows[0], rows[1:]
+    lines = []
+    lines.append("| " + " | ".join(rows[0]) + " |")
+    lines.append("| " + " | ".join(["---"] * len(rows[0])) + " |")
+    for row in rows[1:]:
+        lines.append("| " + " | ".join(row) + " |")
+    return "\n".join(lines)
 
+
+def _result_md(winner: dict | None, winner_status: str, winner_raw: str, source: str) -> str:
+    """Форматирует итоговый результат в Markdown."""
     if winner and winner_status == "valid":
         steps_md = "\n".join(f"{i+1}. {s}" for i, s in enumerate(winner["steps"]))
         notes_md = "\n".join(f"- {n}" for n in winner["notes"])
-        content = (
-            f"# {winner['title']}\n\n"
-            f"> Задача: {task['label']}\n"
-            f"> Модель: {model_label}\n"
-            f"> Дата: {now}\n"
-            f"> Источник: {source}\n\n"
-            f"## Шаги\n\n{steps_md}\n\n"
-            f"## Примечания\n\n{notes_md}\n"
+        return (
+            f"### {winner['title']}\n\n"
+            f"**Источник:** {source}\n\n"
+            f"**Шаги**\n\n{steps_md}\n\n"
+            f"**Примечания**\n\n{notes_md}\n"
         )
-    else:
-        content = (
-            f"# Ошибка парсинга\n\n"
-            f"> Задача: {task['label']}\n"
-            f"> Модель: {model_label}\n"
-            f"> Дата: {now}\n"
-            f"> Статус: {winner_status}\n\n"
-            f"## Сырой ответ модели\n\n{winner_raw}\n"
-        )
+    return (
+        f"**Статус:** {winner_status} — JSON не распознан.\n\n"
+        f"**Источник:** {source}\n\n"
+        f"**Сырой ответ:**\n\n```\n{winner_raw}\n```\n"
+    )
+
+
+def write_artifact(
+    task: dict,
+    provider_name: str,
+    model_id: str,
+    model_label: str,
+    base_sys: str,
+    enhanced_sys: str,
+    user_msg: str,
+    base_raw: str,
+    base_status: str,
+    base_usage: dict,
+    enhanced_raw: str,
+    enhanced_status: str,
+    enhanced_usage: dict,
+    cmp: dict,
+    winner: dict | None,
+    winner_raw: str,
+    winner_status: str,
+    source: str,
+) -> str:
+    now = datetime.now()
+    timestamp = now.strftime("%Y%m%d_%H%M%S")
+    human_time = now.strftime("%Y-%m-%d %H:%M:%S")
+    path = f"artifact_{timestamp}.md"
+
+    lines = [
+        f"# Prompt Engineering Demo — {human_time}",
+        "",
+        "## Параметры запуска",
+        "",
+        f"| Параметр | Значение |",
+        f"| --- | --- |",
+        f"| Задача | {task['label']} |",
+        f"| Провайдер | {provider_name} |",
+        f"| Модель (label) | {model_label} |",
+        f"| Модель (id) | {model_id} |",
+        f"| Temperature | {TEMPERATURE} |",
+        f"| Пользовательское сообщение | {user_msg} |",
+        "",
+        "---",
+        "",
+        "## Промпты",
+        "",
+        "### Базовый промпт (system)",
+        "",
+        f"```\n{base_sys}\n```",
+        "",
+        "### Улучшенный промпт (few-shot, system)",
+        "",
+        f"```\n{enhanced_sys}\n```",
+        "",
+        "---",
+        "",
+        "## Ответы модели",
+        "",
+        "### Ответ на базовый промпт",
+        "",
+        f"**Статус:** {base_status}  ",
+        f"**Токены:** вход {base_usage.get('prompt_tokens','?')} | выход {base_usage.get('completion_tokens','?')} | всего {base_usage.get('total_tokens','?')}",
+        "",
+        f"```\n{base_raw}\n```",
+        "",
+        "### Ответ на улучшенный промпт",
+        "",
+        f"**Статус:** {enhanced_status}  ",
+        f"**Токены:** вход {enhanced_usage.get('prompt_tokens','?')} | выход {enhanced_usage.get('completion_tokens','?')} | всего {enhanced_usage.get('total_tokens','?')}",
+        "",
+        f"```\n{enhanced_raw}\n```",
+        "",
+        "---",
+        "",
+        "## Сравнительный анализ",
+        "",
+        _comparison_md(cmp),
+        "",
+        "---",
+        "",
+        "## Итоговый результат",
+        "",
+        _result_md(winner, winner_status, winner_raw, source),
+    ]
 
     with open(path, "w", encoding="utf-8") as f:
-        f.write(content)
+        f.write("\n".join(lines))
     return os.path.abspath(path)
 
 # ─── Оркестратор ──────────────────────────────────────────────────────────────
@@ -410,7 +500,26 @@ def run_demo() -> None:
     winner_raw = enhanced_raw if source == "enhanced" else base_raw
     winner_status = enhanced_status if source == "enhanced" else base_status
 
-    artifact_path = write_artifact(task, model_label, winner, winner_raw, winner_status, source)
+    artifact_path = write_artifact(
+        task=task,
+        provider_name=PROVIDERS[provider_key]["name"],
+        model_id=model_id,
+        model_label=model_label,
+        base_sys=base_sys,
+        enhanced_sys=enhanced_sys,
+        user_msg=user_msg,
+        base_raw=base_raw,
+        base_status=base_status,
+        base_usage=base_usage,
+        enhanced_raw=enhanced_raw,
+        enhanced_status=enhanced_status,
+        enhanced_usage=enhanced_usage,
+        cmp=cmp,
+        winner=winner,
+        winner_raw=winner_raw,
+        winner_status=winner_status,
+        source=source,
+    )
     print(f"\n  Артефакт сохранён → {artifact_path}")
 
 
