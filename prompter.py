@@ -2,8 +2,20 @@
 prompter.py — A/B-тестирование техник prompt engineering.
 Запуск: python prompter.py
 
-Техники: zero-shot, few-shot, chain-of-thought (CoT), role-based.
-Сравнивает все выбранные техники и сохраняет полный отчёт в artifact_YYYYMMDD_HHMMSS.md.
+Интерактивно запрашивает задачу, провайдера, модель, temperature, max_tokens
+и набор техник для сравнения. Поддерживаемые техники:
+  - zero-shot        — прямой запрос без примеров
+  - few-shot         — запрос с примером корректного ответа
+  - chain-of-thought — запрос с пошаговым рассуждением (CoT)
+  - role-based       — запрос с явным указанием роли эксперта
+
+Все техники запускаются с одинаковыми параметрами модели.
+Результаты ранжируются и сохраняются в artifact_YYYYMMDD_HHMMSS.md:
+  - параметры запуска (модель, temperature, max_tokens)
+  - промпты и ответы по каждой технике
+  - стоимость каждого запроса в ₽
+  - сводная таблица сравнения с рангами
+  - детальный разбор каждой техники
 """
 import json
 import os
@@ -482,7 +494,7 @@ def write_artifact(
         f"**Техника:** {winner['technique']}  ",
         f"**Статус:** {winner['status']}  ",
         f"**Шагов:** {winner['metrics']['steps_count']}  ",
-        f"**Стоимость:** {'бесплатно' if winner['cost'] == 0 else f\"{winner['cost']:.4f} ₽\"}",
+        f"**Стоимость:** {('бесплатно' if winner['cost'] == 0 else '{:.4f} ₽'.format(winner['cost']))}",
         "",
         "---",
         "",
