@@ -259,9 +259,8 @@ def pick_params(model: dict) -> tuple[float, int]:
     sep()
     print("  ПАРАМЕТРЫ ЗАПРОСА")
     sep()
-    print(f"  Диапазон температуры для {model['label']}: {lo} – {hi}")
-    temperature = get_float(f"  Temperature (по умолчанию 0.2): ", 0.2, lo, hi)
-    max_tokens  = get_int(f"  Max tokens (1–{max_limit}, по умолчанию 512): ", 512, 1, max_limit)
+    temperature = get_float(f"  Temperature [{lo}–{hi}], по умолчанию 0.2: ", 0.2, lo, hi)
+    max_tokens  = get_int(f"  Max tokens [1–{max_limit}], по умолчанию 512: ", 512, 1, max_limit)
     return temperature, max_tokens
 
 # ─── Выбор техник ─────────────────────────────────────────────────────────────
