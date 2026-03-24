@@ -44,7 +44,7 @@ PROVIDERS = {
             {"id": "gpt-4-1",                         "label": "GPT-4.1",            "free": False, "context": "1M",   "temp_range": (0.0, 2.0), "max_tokens_limit": 32768, "price_in": 0.4,    "price_out": 1.6},
             {"id": "gpt-4o",                          "label": "GPT-4o",             "free": False, "context": "128K", "temp_range": (0.0, 2.0), "max_tokens_limit": 16384, "price_in": 0.5,    "price_out": 2.0},
             {"id": "claude-sonnet-4-5",               "label": "Claude Sonnet 4.5",  "free": False, "context": "200K", "temp_range": (0.0, 1.0), "max_tokens_limit": 8192,  "price_in": 0.8,    "price_out": 3.0},
-            {"id": "gemini-2-5-flash",                "label": "Gemini 2.5 Flash",   "free": False, "context": "1M",   "temp_range": (0.0, 2.0), "max_tokens_limit": 8192,  "price_in": 0.06,   "price_out": 0.5},
+            {"id": "gemini-2.5-flash-preview-04-17", "label": "Gemini 2.5 Flash",   "free": False, "context": "1M",   "temp_range": (0.0, 2.0), "max_tokens_limit": 8192,  "price_in": 0.06,   "price_out": 0.5},
             {"id": "deepseek-chat",                   "label": "DeepSeek Chat",      "free": False, "context": "64K",  "temp_range": (0.0, 2.0), "max_tokens_limit": 8192,  "price_in": 0.07,   "price_out": 0.105},
             {"id": "deepseek-r1",                     "label": "DeepSeek R1",        "free": False, "context": "64K",  "temp_range": (0.0, 2.0), "max_tokens_limit": 16000, "price_in": 0.3,    "price_out": 1.5},
         ],

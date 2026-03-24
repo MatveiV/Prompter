@@ -292,7 +292,7 @@ Base URL: `https://proxy.gen-api.ru/v1`
 | GPT-4.1 | `gpt-4-1` | 1M | 0.40 ₽/1К | 1.60 ₽/1К |
 | GPT-4o | `gpt-4o` | 128K | 0.50 ₽/1К | 2.00 ₽/1К |
 | Claude Sonnet 4.5 | `claude-sonnet-4-5` | 200K | 0.80 ₽/1К | 3.00 ₽/1К |
-| Gemini 2.5 Flash | `gemini-2-5-flash` | 1M | 0.06 ₽/1К | 0.50 ₽/1К |
+| Gemini 2.5 Flash | `gemini-2.5-flash-preview-04-17` | 1M | 0.06 ₽/1К | 0.50 ₽/1К |
 | DeepSeek Chat | `deepseek-chat` | 64K | 0.07 ₽/1К | 0.105 ₽/1К |
 | DeepSeek R1 | `deepseek-r1` | 64K | 0.30 ₽/1К | 1.50 ₽/1К |
 
