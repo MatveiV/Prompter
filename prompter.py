@@ -439,8 +439,12 @@ def _iteration_comparison_md(results: list[dict]) -> str:
     """Пункт 5 задания: сравнение 'до' (zero-shot) и 'после' (few-shot) итерации."""
     before = next((r for r in results if r["technique"] == "zero-shot"), None)
     after  = next((r for r in results if r["technique"] == "few-shot"), None)
-    if not before or not after:
-        return "_Для сравнения итерации нужны техники zero-shot и few-shot._\n"
+    if not before and not after:
+        return "_Ни zero-shot, ни few-shot не были выбраны — сравнение итерации недоступно._\n"
+    if not before:
+        return "_zero-shot не выбран — добавьте его для сравнения итерации._\n"
+    if not after:
+        return "_few-shot не выбран — добавьте его для сравнения итерации._\n"
 
     def yn(val: bool) -> str:
         return "да ✅" if val else "нет ❌"
@@ -465,30 +469,76 @@ def _iteration_comparison_md(results: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def _user_readme_md(task: dict, winner: dict, model_label: str, human_time: str) -> str:
-    """Пункт 6 задания: README для пользователя на основе лучшего ответа."""
+def _user_readme_md(
+    task: dict,
+    winner: dict,
+    model_label: str,
+    human_time: str,
+    results: list[dict],
+) -> str:
+    """Пункт 6 задания: README для пользователя — итоговый ответ + анализ промптов."""
     p = winner.get("parsed")
-    if not p or winner["status"] != "valid":
-        return f"_Не удалось сгенерировать README: ответ техники '{winner['technique']}' невалиден._\n"
 
-    steps_md = "\n".join(f"{i+1}. {s}" for i, s in enumerate(p["steps"]))
-    notes_md = "\n".join(f"- {n}" for n in p["notes"])
-    return "\n".join([
-        f"# {p['title']}",
+    # Шапка с параметрами
+    header_lines = [
+        f"# Результат: {task['label']}",
         "",
         f"> Задача: {task['label']}  ",
         f"> Модель: {model_label}  ",
         f"> Дата: {human_time}  ",
-        f"> Лучшая техника: {winner['technique']}",
+        f"> Лучшая техника: {winner['technique']} (ранг #{winner['rank']})",
         "",
-        "## Шаги",
+    ]
+
+    # Итоговый ответ победителя
+    if p and winner["status"] == "valid":
+        steps_md = "\n".join(f"{i+1}. {s}" for i, s in enumerate(p["steps"]))
+        notes_md = "\n".join(f"- {n}" for n in p["notes"])
+        result_lines = [
+            f"## {p['title']}",
+            "",
+            "### Шаги",
+            "",
+            steps_md,
+            "",
+            "### Примечания",
+            "",
+            notes_md,
+            "",
+        ]
+    else:
+        result_lines = [
+            f"## Итоговый ответ",
+            "",
+            f"_Ответ техники '{winner['technique']}' невалиден (статус: {winner['status']})._",
+            "",
+        ]
+
+    # Анализ промптов: сводная таблица (пункт 5)
+    analysis_lines = [
+        "---",
         "",
-        steps_md,
+        "## Анализ промптов (A/B-тест)",
         "",
-        "## Примечания",
+        "### Сводная таблица",
         "",
-        notes_md,
-    ])
+        _comparison_table_md(results),
+        "",
+        "### Сравнение итерации качества (zero-shot → few-shot)",
+        "",
+        "_Соответствие JSON-формату, полезность шагов, лаконичность notes:_",
+        "",
+        _iteration_comparison_md(results),
+        "",
+        "### Формула ранга",
+        "",
+        "```",
+        "score = json_valid × 1.0 + steps_count × 0.1 − avg_notes_len × 0.001",
+        "```",
+        "",
+    ]
+
+    return "\n".join(header_lines + result_lines + analysis_lines)
 
 
 def _comparison_table_md(results: list[dict]) -> str:
@@ -583,9 +633,9 @@ def write_artifact(
     with open(path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
 
-    # Пункт 6: отдельный README для пользователя
+    # Пункт 6: отдельный README для пользователя с анализом промптов
     with open(readme_path, "w", encoding="utf-8") as f:
-        f.write(_user_readme_md(task, winner, model_label, human_time))
+        f.write(_user_readme_md(task, winner, model_label, human_time, results))
 
     return os.path.abspath(path), os.path.abspath(readme_path)
 
@@ -648,6 +698,15 @@ def run() -> None:
 
     results = compare_all(results)
     print_comparison(results)
+
+    # Предупреждение если итерация zero-shot→few-shot неполная
+    has_zero = any(r["technique"] == "zero-shot" for r in results)
+    has_few  = any(r["technique"] == "few-shot"  for r in results)
+    if not (has_zero and has_few):
+        missing = []
+        if not has_zero: missing.append("zero-shot")
+        if not has_few:  missing.append("few-shot")
+        print(f"\n  Совет: для сравнения итерации качества добавьте технику(и): {', '.join(missing)}")
 
     artifact_path, readme_path = write_artifact(
         task=task,
