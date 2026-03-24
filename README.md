@@ -12,6 +12,7 @@
 ├── openai_client.py            # Единый OpenAI-совместимый HTTP-клиент
 ├── ai_direct.py                # Интерактивный CLI с историей и сохранением сессии
 ├── prompter.py                 # A/B-тест техник промптинга (zero-shot/few-shot/CoT/role)
+├── case_prompter.py            # Тестирование JSON-промптов из папки Prompts/
 ├── zai_direct.py               # CLI — Z.AI (GLM-модели)
 ├── proxy_api.py                # CLI — ProxyAPI → OpenAI GPT
 ├── gen_api.py                  # CLI — GenAPI (GPT / Claude / Gemini / DeepSeek)
@@ -19,6 +20,11 @@
 ├── session.json                # Сохранённая сессия ai_direct.py (создаётся автоматически)
 ├── artifact_YYYYMMDD_HHMMSS.md # A/B-отчёты prompter.py (создаются автоматически)
 ├── result_YYYYMMDD_HHMMSS.md   # README-артефакты для пользователя (создаются автоматически)
+├── Prompts/                    # Системные промпты в JSON для case_prompter.py
+│   ├── 01_summary_prompt.json
+│   ├── 02_code_structure.json
+│   └── 03_task_planning_prompt.json
+├── CASE_PROMPTER.md            # Документация к case_prompter.py
 ├── .env                        # Секреты (не коммитить)
 ├── .env.example                # Шаблон .env
 ├── requirements.txt            # Зависимости
@@ -168,6 +174,27 @@ score = json_valid × 1.0
 - `json_valid × 1.0` — главный критерий: валидный JSON даёт +1 балл
 - `steps_count × 0.1` — больше шагов = более детальный ответ = лучше
 - `avg_notes_len × 0.001` — штраф за многословность: короткие notes лаконичнее
+
+---
+
+### case_prompter.py — тестирование JSON-промптов
+
+Читает системные промпты из `Prompts/*.json`, принимает вопрос от пользователя и отправляет запрос выбранному провайдеру. Поддерживает повтор одного промпта с разными моделями и параметрами для сравнения.
+
+```bash
+python case_prompter.py
+```
+
+Шаги при запуске:
+1. Выбор промптов из `Prompts/` (один, несколько через запятую, или все)
+2. Выбор провайдера и модели
+3. Настройка temperature и max_tokens
+4. Ввод вопроса (или использование `test_input` из JSON одной клавишей)
+5. Ответ выводится в терминал с токенами и стоимостью
+6. Результат сохраняется в `cases/case_<id>_<timestamp>.md`
+7. Предложение повторить с другими параметрами или моделью
+
+Подробная документация: [CASE_PROMPTER.md](CASE_PROMPTER.md)
 
 ---
 
