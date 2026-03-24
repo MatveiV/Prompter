@@ -286,36 +286,42 @@ def pick_techniques() -> list[str]:
 # ─── Построение промптов по технике ──────────────────────────────────────────
 
 def build_prompt(task: dict, technique: str) -> str:
-    base = (
-        f"Задача: {task['task']}\n"
-        f"Контекст: {task['context']}\n"
-        f"Формат ответа: верни строго JSON без пояснений и без markdown:\n{JSON_FORMAT}"
-    )
+    # Базовая схема по заданию: роль → контекст → задача → формат ответа
+    role_line    = f"Роль: {task['role']}"
+    context_line = f"Контекст: {task['context']}"
+    task_line    = f"Задача: {task['task']}"
+    format_line  = f"Формат ответа: верни строго JSON без пояснений и без markdown:\n{JSON_FORMAT}"
 
     if technique == "zero-shot":
-        return base
+        # Схема без примера и без подсказок
+        return "\n".join([role_line, context_line, task_line, format_line])
 
     if technique == "few-shot":
+        # Схема + мини-пример (итерация качества по заданию п.4)
         example = json.dumps(task["few_shot_example"], ensure_ascii=False, indent=2)
-        return base + f"\n\nПример корректного ответа:\n{example}"
+        return "\n".join([
+            role_line, context_line, task_line, format_line,
+            "",
+            "Пример корректного ответа:",
+            example,
+        ])
 
     if technique == "chain-of-thought":
-        return (
-            f"Задача: {task['task']}\n"
-            f"Контекст: {task['context']}\n"
-            f"Рассуждай пошагово: {task['cot_hint']}\n"
-            f"После рассуждения верни строго JSON без пояснений и без markdown:\n{JSON_FORMAT}"
-        )
+        # Схема + явное пошаговое рассуждение
+        return "\n".join([
+            role_line, context_line, task_line,
+            f"Рассуждай пошагово: {task['cot_hint']}",
+            format_line,
+        ])
 
     if technique == "role-based":
-        return (
-            f"Роль: {task['role']}\n"
-            f"Контекст: {task['context']}\n"
-            f"Задача: {task['task']}\n"
-            f"Формат ответа: верни строго JSON без пояснений и без markdown:\n{JSON_FORMAT}"
-        )
+        # Усиленная роль + контекст + задача + формат
+        return "\n".join([
+            f"Роль: {task['role']} Отвечай строго как этот эксперт.",
+            context_line, task_line, format_line,
+        ])
 
-    return base
+    return "\n".join([role_line, context_line, task_line, format_line])
 
 # ─── Валидация ответа ─────────────────────────────────────────────────────────
 
@@ -429,6 +435,62 @@ def _technique_section(r: dict) -> str:
     return "\n".join(lines)
 
 
+def _iteration_comparison_md(results: list[dict]) -> str:
+    """Пункт 5 задания: сравнение 'до' (zero-shot) и 'после' (few-shot) итерации."""
+    before = next((r for r in results if r["technique"] == "zero-shot"), None)
+    after  = next((r for r in results if r["technique"] == "few-shot"), None)
+    if not before or not after:
+        return "_Для сравнения итерации нужны техники zero-shot и few-shot._\n"
+
+    def yn(val: bool) -> str:
+        return "да ✅" if val else "нет ❌"
+
+    bm, am = before["metrics"], after["metrics"]
+
+    # Полезность шагов: больше шагов = лучше
+    steps_verdict = "few-shot лучше" if am["steps_count"] > bm["steps_count"] else (
+        "zero-shot лучше" if bm["steps_count"] > am["steps_count"] else "одинаково")
+
+    # Лаконичность notes: меньше средняя длина = лаконичнее
+    notes_verdict = "few-shot лаконичнее" if am["avg_notes_len"] < bm["avg_notes_len"] else (
+        "zero-shot лаконичнее" if bm["avg_notes_len"] < am["avg_notes_len"] else "одинаково")
+
+    lines = [
+        "| Критерий | До (zero-shot) | После (few-shot) | Итог |",
+        "| --- | --- | --- | --- |",
+        f"| Соответствие JSON-формату | {yn(bm['json_valid'])} | {yn(am['json_valid'])} | {'улучшилось' if am['json_valid'] and not bm['json_valid'] else 'без изменений'} |",
+        f"| Полезность шагов (кол-во) | {bm['steps_count']} | {am['steps_count']} | {steps_verdict} |",
+        f"| Лаконичность notes (ср.длина) | {bm['avg_notes_len']:.1f} симв. | {am['avg_notes_len']:.1f} симв. | {notes_verdict} |",
+    ]
+    return "\n".join(lines)
+
+
+def _user_readme_md(task: dict, winner: dict, model_label: str, human_time: str) -> str:
+    """Пункт 6 задания: README для пользователя на основе лучшего ответа."""
+    p = winner.get("parsed")
+    if not p or winner["status"] != "valid":
+        return f"_Не удалось сгенерировать README: ответ техники '{winner['technique']}' невалиден._\n"
+
+    steps_md = "\n".join(f"{i+1}. {s}" for i, s in enumerate(p["steps"]))
+    notes_md = "\n".join(f"- {n}" for n in p["notes"])
+    return "\n".join([
+        f"# {p['title']}",
+        "",
+        f"> Задача: {task['label']}  ",
+        f"> Модель: {model_label}  ",
+        f"> Дата: {human_time}  ",
+        f"> Лучшая техника: {winner['technique']}",
+        "",
+        "## Шаги",
+        "",
+        steps_md,
+        "",
+        "## Примечания",
+        "",
+        notes_md,
+    ])
+
+
 def _comparison_table_md(results: list[dict]) -> str:
     header = ["Ранг", "Техника", "JSON", "Шагов", "Ср.длина notes", "Токены", "Стоимость"]
     rows = [header, ["---"] * len(header)]
@@ -455,11 +517,12 @@ def write_artifact(
     temperature: float,
     max_tokens: int,
     results: list[dict],
-) -> str:
+) -> tuple[str, str]:
     now = datetime.now()
     timestamp = now.strftime("%Y%m%d_%H%M%S")
     human_time = now.strftime("%Y-%m-%d %H:%M:%S")
     path = f"artifact_{timestamp}.md"
+    readme_path = f"result_{timestamp}.md"
 
     total_cost = sum(r["cost"] for r in results)
     total_tokens = sum(r["usage"].get("total_tokens", 0) for r in results)
@@ -490,6 +553,14 @@ def write_artifact(
         "",
         "---",
         "",
+        "## Сравнение итерации качества (zero-shot → few-shot)",
+        "",
+        "_Пункт 5: соответствие JSON-формату, полезность шагов, лаконичность notes._",
+        "",
+        _iteration_comparison_md(results),
+        "",
+        "---",
+        "",
         "## Победитель",
         "",
         f"**Техника:** {winner['technique']}  ",
@@ -511,7 +582,12 @@ def write_artifact(
 
     with open(path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
-    return os.path.abspath(path)
+
+    # Пункт 6: отдельный README для пользователя
+    with open(readme_path, "w", encoding="utf-8") as f:
+        f.write(_user_readme_md(task, winner, model_label, human_time))
+
+    return os.path.abspath(path), os.path.abspath(readme_path)
 
 # ─── Оркестратор ──────────────────────────────────────────────────────────────
 
@@ -573,7 +649,7 @@ def run() -> None:
     results = compare_all(results)
     print_comparison(results)
 
-    artifact_path = write_artifact(
+    artifact_path, readme_path = write_artifact(
         task=task,
         provider_name=PROVIDERS[provider_key]["name"],
         model_id=model_id,
@@ -582,7 +658,8 @@ def run() -> None:
         max_tokens=max_tokens,
         results=results,
     )
-    print(f"\n  Артефакт сохранён → {artifact_path}")
+    print(f"\n  Отчёт A/B   → {artifact_path}")
+    print(f"  README итог → {readme_path}")
 
 
 if __name__ == "__main__":
