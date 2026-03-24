@@ -259,7 +259,14 @@ def pick_params(model: dict) -> tuple[float, int]:
     sep()
     print("  ПАРАМЕТРЫ ЗАПРОСА")
     sep()
+    print(f"  Рекомендуется temperature=0.2 для структурированного JSON-вывода.")
+    print(f"  Значения выше 1.0 могут привести к нечитаемым ответам.")
     temperature = get_float(f"  Temperature [{lo}–{hi}], по умолчанию 0.2: ", 0.2, lo, hi)
+    if temperature > 1.0:
+        print(f"  Предупреждение: temperature={temperature} очень высокая — модель может вернуть мусор вместо JSON.")
+        confirm = ask("  Продолжить? [y/N]: ", "n").lower()
+        if confirm != "y":
+            temperature = get_float(f"  Temperature [{lo}–{hi}], по умолчанию 0.2: ", 0.2, lo, hi)
     max_tokens  = get_int(f"  Max tokens [1–{max_limit}], по умолчанию 512: ", 512, 1, max_limit)
     return temperature, max_tokens
 
@@ -326,21 +333,63 @@ def build_prompt(task: dict, technique: str) -> str:
 # ─── Валидация ответа ─────────────────────────────────────────────────────────
 
 def parse_response(raw: str) -> tuple[dict | None, str]:
-    try:
-        match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw, re.DOTALL)
-        text = match.group(1) if match else raw.strip()
-        # Обрезать до первого валидного JSON-объекта
-        brace = text.find("{")
-        if brace > 0:
-            text = text[brace:]
-        data = json.loads(text)
-        if (isinstance(data.get("title"), str)
-                and isinstance(data.get("steps"), list)
-                and isinstance(data.get("notes"), list)):
-            return data, "valid"
-        return data, "incomplete"
-    except Exception:
-        return None, "invalid"
+    """
+    Многоуровневое извлечение JSON из ответа модели.
+    1. Ищет ```json ... ``` блок
+    2. Ищет первый { ... } объект в тексте (жадный поиск)
+    3. Пробует весь текст как JSON
+    """
+    def _try_parse(text: str) -> dict | None:
+        try:
+            data = json.loads(text)
+            if (isinstance(data.get("title"), str)
+                    and isinstance(data.get("steps"), list)
+                    and isinstance(data.get("notes"), list)):
+                return data
+        except Exception:
+            pass
+        return None
+
+    # 1. Markdown-блок ```json ... ```
+    match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw, re.DOTALL)
+    if match:
+        result = _try_parse(match.group(1))
+        if result:
+            return result, "valid"
+
+    # 2. Найти первый { и попробовать разобрать JSON с нарастающей длиной
+    #    (ищем самый длинный валидный JSON-объект начиная с первой {)
+    start = raw.find("{")
+    if start != -1:
+        # Попробуем найти закрывающую } методом подсчёта скобок
+        depth = 0
+        end = -1
+        for i, ch in enumerate(raw[start:], start):
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    end = i + 1
+                    break
+        if end != -1:
+            candidate = raw[start:end]
+            result = _try_parse(candidate)
+            if result:
+                return result, "valid"
+            # Поля есть, но неполные
+            try:
+                data = json.loads(candidate)
+                return data, "incomplete"
+            except Exception:
+                pass
+
+    # 3. Весь текст как JSON
+    result = _try_parse(raw.strip())
+    if result:
+        return result, "valid"
+
+    return None, "invalid"
 
 # ─── Метрики и сравнение ──────────────────────────────────────────────────────
 
@@ -577,6 +626,7 @@ def write_artifact(
     total_cost = sum(r["cost"] for r in results)
     total_tokens = sum(r["usage"].get("total_tokens", 0) for r in results)
     winner = min(results, key=lambda x: x["rank"])
+    all_invalid = all(r["status"] == "invalid" for r in results)
 
     lines = [
         f"# Prompter A/B Report — {human_time}",
@@ -595,6 +645,17 @@ def write_artifact(
         f"| Токенов всего | {total_tokens} |",
         f"| Стоимость всего | {'бесплатно' if total_cost == 0 else f'{total_cost:.4f} ₽'} |",
         "",
+    ]
+
+    if all_invalid:
+        lines += [
+            "> ⚠️ **Все техники вернули невалидный JSON.**",
+            f"> Temperature={temperature} слишком высокая для структурированного вывода.",
+            "> Рекомендация: повторите запуск с temperature=0.2",
+            "",
+        ]
+
+    lines += [
         "---",
         "",
         "## Сводная таблица сравнения",
@@ -698,6 +759,16 @@ def run() -> None:
 
     results = compare_all(results)
     print_comparison(results)
+
+    # Диагностика: если все ответы невалидны
+    all_invalid = all(r["status"] == "invalid" for r in results)
+    if all_invalid:
+        print()
+        sep("!")
+        print("  ВНИМАНИЕ: все техники вернули невалидный JSON.")
+        print(f"  Использованная temperature={temperature} слишком высокая для JSON-вывода.")
+        print("  Рекомендация: повторите запуск с temperature=0.2")
+        sep("!")
 
     # Предупреждение если итерация zero-shot→few-shot неполная
     has_zero = any(r["technique"] == "zero-shot" for r in results)
