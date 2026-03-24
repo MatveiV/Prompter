@@ -234,11 +234,12 @@ def pick_provider_and_model() -> tuple[str, str, dict]:
     sep()
     print(f"  МОДЕЛИ — {PROVIDERS[p_key]['name']}")
     sep()
-    print(f"  {'#':<4} {'Модель':<28} {'Контекст':<10} {'Бесплатно':<12} Макс. токенов")
+    print(f"  {'#':<4} {'Модель':<28} {'Контекст':<10} {'Бесплатно':<12} {'Температура':<14} Макс. токенов")
     sep()
     for i, m in enumerate(models, 1):
         free_tag = "да" if m.get("free") else "нет"
-        print(f"  {i:<4} {m['label']:<28} {m.get('context','?'):<10} {free_tag:<12} {m.get('max_tokens_limit','?')}")
+        tlo, thi = m.get("temp_range", (0.0, 2.0))
+        print(f"  {i:<4} {m['label']:<28} {m.get('context','?'):<10} {free_tag:<12} {tlo}–{thi:<10} {m.get('max_tokens_limit','?')}")
     sep()
     while True:
         choice = ask("  Модель [1]: ", "1")
@@ -258,7 +259,8 @@ def pick_params(model: dict) -> tuple[float, int]:
     sep()
     print("  ПАРАМЕТРЫ ЗАПРОСА")
     sep()
-    temperature = get_float(f"  Temperature ({lo}–{hi}, по умолчанию 0.2): ", 0.2, lo, hi)
+    print(f"  Диапазон температуры для {model['label']}: {lo} – {hi}")
+    temperature = get_float(f"  Temperature (по умолчанию 0.2): ", 0.2, lo, hi)
     max_tokens  = get_int(f"  Max tokens (1–{max_limit}, по умолчанию 512): ", 512, 1, max_limit)
     return temperature, max_tokens
 
