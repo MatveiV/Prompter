@@ -18,12 +18,12 @@
 ├── gen_api.py                  # CLI — GenAPI (GPT / Claude / Gemini / DeepSeek)
 ├── prompts.json                # Системные промпты для ai_direct.py
 ├── session.json                # Сохранённая сессия ai_direct.py (создаётся автоматически)
-├── artifact_YYYYMMDD_HHMMSS.md # A/B-отчёты prompter.py (создаются автоматически)
-├── result_YYYYMMDD_HHMMSS.md   # README-артефакты для пользователя (создаются автоматически)
 ├── Prompts/                    # Системные промпты в JSON для case_prompter.py
-│   ├── 01_summary_prompt.json
-│   ├── 02_code_structure.json
-│   └── 03_task_planning_prompt.json
+│   ├── 01_summary_prompt.json  # Резюме текста
+│   ├── 02_code_structure.json  # Генерация структуры кода
+│   └── 03_task_planning_prompt.json  # Планирование задач
+├── cases/                      # Результаты тестирования промптов (создаётся автоматически)
+│   └── prompt_testing_report.docx   # Отчёт по результатам тестирования
 ├── CASE_PROMPTER.md            # Документация к case_prompter.py
 ├── .env                        # Секреты (не коммитить)
 ├── .env.example                # Шаблон .env
@@ -188,13 +188,26 @@ python case_prompter.py
 Шаги при запуске:
 1. Выбор промптов из `Prompts/` (один, несколько через запятую, или все)
 2. Выбор провайдера и модели
-3. Настройка temperature и max_tokens
+3. Настройка temperature и max_tokens (по умолчанию 2048)
 4. Ввод вопроса (или использование `test_input` из JSON одной клавишей)
-5. Ответ выводится в терминал с токенами и стоимостью
+5. Ответ выводится в терминал с токенами, стоимостью и `finish_reason`
 6. Результат сохраняется в `cases/case_<id>_<timestamp>.md`
 7. Предложение повторить с другими параметрами или моделью
 
+Особенности:
+- Предупреждение `⚠ Ответ обрезан` при `finish_reason=length` — в терминале и в файле
+- Предупреждение при пустом ответе модели
+- Fallback на `reasoning_content` для GLM-моделей (Z.AI)
+
 Подробная документация: [CASE_PROMPTER.md](CASE_PROMPTER.md)
+
+#### Системные промпты (Prompts/)
+
+| Файл | Промпт | Роль | Рекомендуемый max_tokens |
+|------|--------|------|--------------------------|
+| `01_summary_prompt.json` | Резюме текста v1.1 | Редактор и аналитик текстов | 2048 |
+| `02_code_structure.json` | Генерация структуры кода v1.7 | Senior software architect | 4096–8192 |
+| `03_task_planning_prompt.json` | Планирование задач v1.4 | Project manager (PMP, Scrum) | 4096–8192 |
 
 ---
 
@@ -213,6 +226,25 @@ python gen_api.py      # GenAPI → GPT / Claude / Gemini / DeepSeek
 2. Ввести system message (опционально)
 3. Ввести запрос
 4. Задать temperature и max_tokens
+
+---
+
+## Результаты тестирования промптов
+
+Тестирование трёх системных промптов проводилось 24 марта 2026 г. на 6 AI-моделях через трёх провайдеров (25 запусков). Полный отчёт: [`cases/prompt_testing_report.docx`](cases/prompt_testing_report.docx).
+
+### Краткие выводы
+
+| Промпт | Лучшая модель | Рекомендуемый max_tokens | Типичная стоимость |
+|--------|--------------|--------------------------|-------------------|
+| Резюме текста | Gemini 2.5 Flash (GenAPI) | 2048 | ~0.40 ₽ |
+| Структура кода | GPT-4o Mini (ProxyAPI) | 4096–8192 | ~0.50 ₽ |
+| Планирование задач | GPT-4.1 Mini (ProxyAPI) | 4096–8192 | ~0.90 ₽ |
+
+**Ключевые наблюдения:**
+- GLM-модели (Z.AI free) при `max_tokens=1024` возвращали пустой `content` — исправлено через fallback на `reasoning_content` в `openai_client.py`
+- Промпты 2 и 3 генерируют объёмные ответы — при `max_tokens=2048` большинство моделей обрезается
+- DeepSeek Chat (GenAPI, ~0.15 ₽) — лучшее соотношение цена/качество для архитектурных задач
 
 ---
 
@@ -267,6 +299,8 @@ Base URL: `https://api.z.ai/api/paas/v4/`
 | GLM-4.5 | 128K | — | 0.15 ₽/1К | 0.55 ₽/1К |
 | GLM-5 | 200K | — | 0.25 ₽/1К | 0.80 ₽/1К |
 
+> Примечание: GLM-модели не поддерживают работу с URL. При `max_tokens=1024` могут возвращать пустой ответ — используйте `max_tokens=2048` и выше.
+
 ### ProxyAPI
 
 Base URL: `https://api.proxyapi.ru/openai/v1`
@@ -284,8 +318,6 @@ Base URL: `https://api.proxyapi.ru/openai/v1`
 
 Base URL: `https://proxy.gen-api.ru/v1`
 
-> GenAPI использует дефисы вместо точек в ID моделей (`gpt-4-1`, `gemini-2-5-flash`).
-
 | Модель | ID в API | Контекст | Цена вход | Цена выход |
 |--------|----------|----------|-----------|------------|
 | GPT-4.1 Mini | `gpt-4-1-mini` | 1M | 0.01 ₽/1К | 0.04 ₽/1К |
@@ -301,11 +333,12 @@ Base URL: `https://proxy.gen-api.ru/v1`
 ## Архитектура
 
 ```
-ai_direct.py / prompter.py / bot.py
+ai_direct.py / prompter.py / case_prompter.py / bot.py
   ├── config.py          — PROVIDERS dict (ключи, URL, модели, цены)
   ├── context_manager.py — _store: dict[user_id → session]  (только bot.py)
   └── openai_client.py   — openai.OpenAI(base_url=...) → chat()
+                           fallback: content → reasoning_content (GLM)
 ```
 
-Все три провайдера используют OpenAI-совместимый API — один клиент работает для всех.
+Все провайдеры используют OpenAI-совместимый API — один клиент работает для всех.
 `proxy_api.py` и `gen_api.py` используют `requests` напрямую (без SDK).

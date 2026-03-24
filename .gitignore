@@ -9,3 +9,4 @@ artifact_README.md
 artifact_*.md
 result_*.md
 cases/
+!cases/prompt_testing_report.docx
