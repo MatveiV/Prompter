@@ -6,3 +6,5 @@ __pycache__/
 venv/
 session.json
 artifact_README.md
+artifact_*.md
+result_*.md
