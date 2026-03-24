@@ -182,7 +182,7 @@ def pick_params(model: dict) -> tuple[float, int]:
         print(f"  Предупреждение: temperature={temperature} очень высокая.")
         if ask("  Продолжить? [y/N]: ", "n").lower() != "y":
             temperature = get_float(f"  Temperature [{lo}–{hi}], по умолчанию 0.7: ", 0.7, lo, hi)
-    max_tokens = get_int(f"  Max tokens [1–{max_limit}], по умолчанию 1024: ", 1024, 1, max_limit)
+    max_tokens = get_int(f"  Max tokens [1–{max_limit}], по умолчанию 2048: ", 2048, 1, max_limit)
     return temperature, max_tokens
 
 # ─── Ввод вопроса ─────────────────────────────────────────────────────────────
@@ -232,14 +232,21 @@ def print_result(
     sep("═")
     print(f"  ОТВЕТ — {prompt_name}")
     sep("═")
-    print(answer)
+    if not answer:
+        print("  [Модель вернула пустой ответ]")
+    else:
+        print(answer)
     sep()
     cost_str = f"{cost:.4f} ₽" if cost > 0 else "бесплатно"
+    finish = usage.get("finish_reason", "?")
     print(f"  Провайдер : {provider_name}")
     print(f"  Модель    : {model_label}")
     print(f"  t={temperature}  max_tokens={max_tokens}")
     print(f"  Токены    : вход={usage.get('prompt_tokens','?')}  выход={usage.get('completion_tokens','?')}  всего={usage.get('total_tokens','?')}")
     print(f"  Стоимость : {cost_str}")
+    print(f"  Причина завершения: {finish}")
+    if finish == "length":
+        print(f"  ⚠ Ответ обрезан (достигнут лимит max_tokens={max_tokens}). Увеличьте max_tokens для полного ответа.")
     sep("═")
 
 # ─── Сохранение в Markdown ────────────────────────────────────────────────────
@@ -265,6 +272,8 @@ def save_markdown(
     path = OUTPUT_DIR / f"case_{prompt_id}_{timestamp}.md"
 
     cost_str = f"{cost:.4f} ₽" if cost > 0 else "бесплатно"
+    finish = usage.get("finish_reason", "?")
+    truncated = finish == "length"
 
     lines = [
         f"# {prompt.get('name', prompt_id)} — {human_time}",
@@ -284,8 +293,25 @@ def save_markdown(
         f"| Токены вход | {usage.get('prompt_tokens', '?')} |",
         f"| Токены выход | {usage.get('completion_tokens', '?')} |",
         f"| Токены всего | {usage.get('total_tokens', '?')} |",
+        f"| Причина завершения | {finish} |",
         f"| Стоимость | {cost_str} |",
         "",
+    ]
+
+    if truncated:
+        lines += [
+            f"> ⚠️ **Ответ обрезан** — достигнут лимит `max_tokens={max_tokens}`.",
+            "> Повторите запрос с большим значением max_tokens для получения полного ответа.",
+            "",
+        ]
+    if not answer:
+        lines += [
+            "> ⚠️ **Модель вернула пустой ответ.** Возможные причины: модель недоступна,",
+            "> запрос заблокирован или ответ пришёл в нестандартном поле.",
+            "",
+        ]
+
+    lines += [
         "---",
         "",
         "## Системный промпт",

@@ -37,15 +37,29 @@ def chat(
         logger.error("OpenAI API error: %s", e)
         raise
 
-    content = response.choices[0].message.content or ""
+    msg = response.choices[0].message
+    finish_reason = response.choices[0].finish_reason
+
+    # Некоторые модели (GLM, reasoning-модели) могут вернуть пустой content,
+    # но заполнить reasoning_content или tool_calls — собираем всё что есть.
+    content = msg.content or ""
+    if not content:
+        # reasoning_content (GLM-Z, DeepSeek-R1 через некоторые прокси)
+        rc = getattr(msg, "reasoning_content", None)
+        if rc:
+            content = rc
+    if not content:
+        logger.warning("Empty content from model, finish_reason=%s", finish_reason)
+
     usage = {}
     if response.usage:
         usage = {
             "prompt_tokens": response.usage.prompt_tokens,
             "completion_tokens": response.usage.completion_tokens,
             "total_tokens": response.usage.total_tokens,
-            "finish_reason": response.choices[0].finish_reason,
+            "finish_reason": finish_reason,
         }
 
-    logger.info("Response ← finish=%s tokens=%s", usage.get("finish_reason"), usage.get("total_tokens"))
+    logger.info("Response ← finish=%s tokens=%s content_len=%d",
+                finish_reason, usage.get("total_tokens"), len(content))
     return content, usage
